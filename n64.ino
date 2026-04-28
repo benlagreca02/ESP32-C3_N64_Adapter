@@ -79,8 +79,8 @@ void setup() {
 void loop() {
   // Enable output driver
   writeReg(GPIO_ENABLE_W1TS_REG, PIN_BIT);
-  delay(1000);
-  // Enable output driver
+  delay(1);
+  // disable output driver
   writeReg(GPIO_ENABLE_W1TC_REG, PIN_BIT);
-  delay(1000);
+  delay(1);
 }
