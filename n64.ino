@@ -14,6 +14,9 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
+  // gpio_set_direction(IO_PIN, GPIO_MODE_INPUT_OUTPUT_OD);
+  // gpio_set_pull_mode(IO_PIN, GPIO_FLOATING);
+
   // TX config
   rmt_config_t tx_cfg = {};
   tx_cfg.rmt_mode = RMT_MODE_TX;
@@ -27,6 +30,10 @@ void setup() {
   rmt_config(&tx_cfg);
   rmt_driver_install(tx_cfg.channel, 0, 0);
 
+// gpio_set_direction(IO_PIN, GPIO_MODE_INPUT_OUTPUT_OD);
+// gpio_set_pull_mode(IO_PIN, GPIO_FLOATING);
+
+
   // RX config
   rmt_config_t rx_cfg = {};
   rx_cfg.rmt_mode = RMT_MODE_RX;
@@ -34,12 +41,18 @@ void setup() {
   rx_cfg.gpio_num = IO_PIN;
   rx_cfg.clk_div = RMT_CLK_DIV;
   rx_cfg.mem_block_num = 1;
-  rx_cfg.rx_config.filter_en = true;
-  rx_cfg.rx_config.filter_ticks_thresh = 100; // filter tiny spikes
-  rx_cfg.rx_config.idle_threshold = 10000; // long idle to end
+  rx_cfg.rx_config.filter_en = false;
+  // rx_cfg.rx_config.filter_ticks_thresh = 100; // filter tiny spikes
+  // rx_cfg.rx_config.idle_threshold = 10000; // long idle to end
+  
   rmt_config(&rx_cfg);
   rmt_driver_install(rx_cfg.channel, 1000, 0);
   rmt_get_ringbuf_handle(rx_cfg.channel, &rb);
+
+
+//   gpio_set_direction(IO_PIN, GPIO_MODE_INPUT_OUTPUT_OD);
+// gpio_set_pull_mode(IO_PIN, GPIO_FLOATING);
+
 }
 
 void loop() {
@@ -66,8 +79,8 @@ void loop() {
   // Start RX and wait for reply
   rmt_rx_start(RX_CH, true);
   size_t rx_size;
-  // wait up to 5ms for reply
-  void* chunk = xRingbufferReceive(rb, &rx_size, pdMS_TO_TICKS(5));
+  // wait up to 1ms for reply
+  void* chunk = xRingbufferReceive(rb, &rx_size, pdMS_TO_TICKS(1));
   if (chunk) {
     rmt_item32_t* rx_items = (rmt_item32_t*)chunk;
     int item_count = rx_size / sizeof(rmt_item32_t);
@@ -94,5 +107,5 @@ void loop() {
   }
 
   rmt_rx_stop(RX_CH);
-  delay(200); // poll interval
+  delay(1); // poll interval
 }
