@@ -4,111 +4,64 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/ringbuf.h"
 
-const gpio_num_t IO_PIN = GPIO_NUM_10; // change to your pin
+#include <BleGamepad.h>
+#include "n64.h"
+
+BleGamepad bleGamepad("N64 Controller", "ESP32-C3", 100);
+
+
 const rmt_channel_t TX_CH = RMT_CHANNEL_0;
 const rmt_channel_t RX_CH = RMT_CHANNEL_2;
-const int RMT_CLK_DIV = 80; // APB 80MHz / 80 = 1MHz -> 1 tick = 1 us
-RingbufHandle_t rb = NULL;
+const gpio_num_t TX_PIN = GPIO_NUM_10;
+const gpio_num_t RX_PIN = GPIO_NUM_9;
+
+N64Controller n64(TX_PIN, RX_PIN, TX_CH, RX_CH);
 
 void setup() {
-  Serial.begin(115200);
-  delay(100);
-
-  // gpio_set_direction(IO_PIN, GPIO_MODE_INPUT_OUTPUT_OD);
-  // gpio_set_pull_mode(IO_PIN, GPIO_FLOATING);
-
-  // TX config
-  rmt_config_t tx_cfg = {};
-  tx_cfg.rmt_mode = RMT_MODE_TX;
-  tx_cfg.channel = TX_CH;
-  tx_cfg.gpio_num = IO_PIN;
-  tx_cfg.mem_block_num = 1;
-  tx_cfg.clk_div = RMT_CLK_DIV;
-  tx_cfg.tx_config.loop_en = false;
-  tx_cfg.tx_config.carrier_en = false;
-  tx_cfg.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH; // release = high
-  rmt_config(&tx_cfg);
-  rmt_driver_install(tx_cfg.channel, 0, 0);
-
-// gpio_set_direction(IO_PIN, GPIO_MODE_INPUT_OUTPUT_OD);
-// gpio_set_pull_mode(IO_PIN, GPIO_FLOATING);
-
-
-  // RX config
-  rmt_config_t rx_cfg = {};
-  rx_cfg.rmt_mode = RMT_MODE_RX;
-  rx_cfg.channel = RX_CH;
-  rx_cfg.gpio_num = GPIO_NUM_9;
-  rx_cfg.clk_div = RMT_CLK_DIV/4;
-  rx_cfg.mem_block_num = 1;
-  rx_cfg.rx_config.filter_en = false;
-  rx_cfg.rx_config.filter_ticks_thresh = 2; // filter tiny spikes
-  rx_cfg.rx_config.idle_threshold = 1000; // long idle to end
-  
-  rmt_config(&rx_cfg);
-  rmt_driver_install(rx_cfg.channel, 4096, 0);
-  rmt_get_ringbuf_handle(rx_cfg.channel, &rb);
-
-
-//   gpio_set_direction(IO_PIN, GPIO_MODE_INPUT_OUTPUT_OD);
-// gpio_set_pull_mode(IO_PIN, GPIO_FLOATING);
-
+    Serial.begin(115200);
+    delay(100);
+    bleGamepad.begin();
 }
 
 void loop() {
-  // Build RMT items for request pattern: bits 000000011 (LSB first for N64)
-  // Each bit encoded as low then high durations (in ticks = microseconds)
-  // 0 -> 3us low, 1us high ; 1 -> 1us low, 3us high
-  // We'll send the 9 bits: 0,0,0,0,0,0,0,1,1 (MSB->LSB depends on your ordering)
-  const uint8_t reqBits[9] = {0,0,0,0,0,0,0,1,1};
-  const int nItems = 9;
-  rmt_item32_t items[nItems];
-  for (int i=0;i<nItems;i++){
-    if (reqBits[i]==0){
-      items[i].level0 = 0; items[i].duration0 = 3; // 3us low
-      items[i].level1 = 1; items[i].duration1 = 1; // 1us high
-    } else {
-      items[i].level0 = 0; items[i].duration0 = 1; // 1us low
-      items[i].level1 = 1; items[i].duration1 = 3; // 3us high
-    }
-  }  
 
-
-  // Start RX and wait for reply
-  rmt_rx_start(RX_CH, true);
+  // if (!bleGamepad.isConnected()) {
+  //   // Optional: still poll N64, or just wait
+  //   delay(50);
+  //   return;
+  // }
   
-  // Transmit request
-  rmt_write_items(TX_CH, items, nItems, true); // wait_tx_done = true
+
+  uint32_t data = n64.poll();
+  Serial.printf("Got %d bits: 0x%08X\n", 32, data);
 
 
-  size_t rx_size;
-  // wait up to 1ms for reply
-  void* chunk = xRingbufferReceive(rb, &rx_size, pdMS_TO_TICKS(1));
-  if (chunk) {
-    rmt_item32_t* rx_items = (rmt_item32_t*)chunk;
-    int item_count = rx_size / sizeof(rmt_item32_t);
-    // Decode low/high pairs into bits
-    // Each item has duration0 (ticks) for level0 then duration1 for level1
-    // We classify by low duration: >=half -> 3us low => bit 0; <=half -> 1us low => bit 1
-    uint32_t value = 0;
-    int bitsDecoded = 0;
-    for (int i=0;i<item_count && bitsDecoded<32+9;i++){
-      // ensure the low level is 0 (controller drives low first)
-      if (rx_items[i].level0 == 0) {
-        uint32_t low = rx_items[i].duration0;
-        uint32_t high = rx_items[i].duration1;
-        // threshold at 2 ticks (2us)
-        int bit = (low <= (low+high)/2) ? 1 : 0;
-        value = (value << 1) | (bit & 1);
-        bitsDecoded++;
-      }
-    }
-    Serial.printf("Got %d bits: 0x%08X\n", bitsDecoded, value);
-    vRingbufferReturnItem(rb, chunk);
-  } else {
-    Serial.println("No reply (timeout)");
-  }
+  /*
+  // Adjust bit positions to match your actual decode order
+  uint16_t buttons = (value >> 16) & 0xFFFF;   // example: upper 16 bits
+  int8_t stickX    = (int8_t)((value >> 8) & 0xFF);
+  int8_t stickY    = (int8_t)(value & 0xFF);
 
-  rmt_rx_stop(RX_CH);
+  // Map N64 buttons to BLE gamepad buttons
+  // Example mapping (you can change to taste):
+  // bit 0: A, bit 1: B, bit 2: Z, bit 3: Start, etc.
+  bleGamepad.resetButtons();
+
+  if (buttons & (1 << 0)) bleGamepad.press(BUTTON_1);   // A
+  if (buttons & (1 << 1)) bleGamepad.press(BUTTON_2);   // B
+  if (buttons & (1 << 2)) bleGamepad.press(BUTTON_3);   // Z
+  if (buttons & (1 << 3)) bleGamepad.press(BUTTON_4);   // Start
+  // Add D-pad, C buttons, L, R as more BUTTON_n or POV hat
+
+  // Map analog stick to X/Y axes (range -128..127 → -32767..32767)
+  int16_t xAxis = (int16_t)stickX * 256;  // simple scaling
+  int16_t yAxis = (int16_t)stickY * 256;
+
+  bleGamepad.setLeftThumb(xAxis, yAxis);
+
+  // Send HID report
+  bleGamepad.sendReport();
+  */
+
   delay(50); // poll interval
 }
