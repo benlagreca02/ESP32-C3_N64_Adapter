@@ -5,17 +5,33 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/ringbuf.h"
 
-
-typedef struct {
+// To represent a controller's state
+class N64State {
+    static constexpr uint32_t A_MASK = 1 << 31;
+    static constexpr uint32_t B_MASK = 1 << 30;
+    static constexpr uint32_t Z_MASK = 1 << 29;
+    static constexpr uint32_t START_MASK = 1 << 28;
+    static constexpr uint32_t DPAD_UP_MASK = 1 << 27;
+    static constexpr uint32_t DPAD_DOWN_MASK = 1 << 26;
+    static constexpr uint32_t DPAD_LEFT_MASK = 1 << 25;
+    static constexpr uint32_t DPAD_RIGHT_MASK = 1 << 24;
+public:
     bool a;
     bool b;
+    bool z;
+    bool start;
     bool l;
     bool r;
-    bool z;
-} N64ControllerState;
+    N64State(uint32_t packed):
+            a(packed & A_MASK),
+            b(packed & B_MASK),
+            z(packed & Z_MASK),
+            start(packed & START_MASK)
+    {}
+};
 
 
-
+// To represent the controller
 class N64Controller {
 private:
     RingbufHandle_t rb = NULL;
