@@ -15,6 +15,8 @@ class N64State {
     static constexpr uint32_t DPAD_DOWN_MASK = 1 << 26;
     static constexpr uint32_t DPAD_LEFT_MASK = 1 << 25;
     static constexpr uint32_t DPAD_RIGHT_MASK = 1 << 24;
+    static constexpr uint32_t X_MASK = 0xFF00;
+    static constexpr uint32_t Y_MASK = 0x00FF;
 public:
     bool a;
     bool b;
@@ -22,11 +24,16 @@ public:
     bool start;
     bool l;
     bool r;
+    signed char x;
+    signed char y;
+
     N64State(uint32_t packed):
             a(packed & A_MASK),
             b(packed & B_MASK),
             z(packed & Z_MASK),
-            start(packed & START_MASK)
+            start(packed & START_MASK),
+            x((packed & X_MASK) >> 8),
+            y(packed & Y_MASK)
     {}
 };
 
