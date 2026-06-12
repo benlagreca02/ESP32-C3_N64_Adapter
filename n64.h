@@ -11,10 +11,16 @@ class N64State {
     static constexpr uint32_t B_MASK = 1 << 30;
     static constexpr uint32_t Z_MASK = 1 << 29;
     static constexpr uint32_t START_MASK = 1 << 28;
-    static constexpr uint32_t DPAD_UP_MASK = 1 << 27;
-    static constexpr uint32_t DPAD_DOWN_MASK = 1 << 26;
-    static constexpr uint32_t DPAD_LEFT_MASK = 1 << 25;
-    static constexpr uint32_t DPAD_RIGHT_MASK = 1 << 24;
+    static constexpr uint32_t DU_MASK = 1 << 27;
+    static constexpr uint32_t DD_MASK = 1 << 26;
+    static constexpr uint32_t DL_MASK = 1 << 25;
+    static constexpr uint32_t DR_MASK = 1 << 24;
+    static constexpr uint32_t L_MASK = 1 << 21;
+    static constexpr uint32_t R_MASK = 1 << 20;
+    static constexpr uint32_t CU_MASK = 1 << 19;
+    static constexpr uint32_t CD_MASK = 1 << 18;
+    static constexpr uint32_t CL_MASK = 1 << 17;
+    static constexpr uint32_t CR_MASK = 1 << 16;
     static constexpr uint32_t X_MASK = 0xFF00;
     static constexpr uint32_t Y_MASK = 0x00FF;
 public:
@@ -24,17 +30,56 @@ public:
     bool start;
     bool l;
     bool r;
+    bool du;
+    bool dd;
+    bool dl;
+    bool dr;
+    bool cu;
+    bool cd;
+    bool cl;
+    bool cr;
     signed char x;
     signed char y;
 
-    N64State(uint32_t packed):
+    N64State(uint32_t packed=0):
             a(packed & A_MASK),
             b(packed & B_MASK),
             z(packed & Z_MASK),
             start(packed & START_MASK),
+            l(packed & L_MASK),
+            r(packed & R_MASK),
+            du(packed & DU_MASK),
+            dd(packed & DD_MASK),
+            dl(packed & DL_MASK),
+            dr(packed & DR_MASK),
+            cu(packed & CU_MASK),
+            cd(packed & CD_MASK),
+            cl(packed & CL_MASK),
+            cr(packed & CR_MASK),
             x((packed & X_MASK) >> 8),
             y(packed & Y_MASK)
     {}
+
+    N64State operator-(const N64State& other) const{
+        N64State newState;
+        newState.a = other.a != a;
+        newState.b = other.b != b;
+        newState.z = other.b != b;
+        newState.start = other.start != start;
+        newState.l = other.l != l;
+        newState.r = other.r != r;
+        newState.du = other.du != du;
+        newState.dd = other.dd != dd;
+        newState.dl = other.dl != dl;
+        newState.dr = other.dr != dr;
+        newState.cu = other.cu != cu;
+        newState.cd = other.cd != cd;
+        newState.cl = other.cl != cl;
+        newState.cr = other.cr != cr;
+        newState.x = this->x;
+        newState.y = this->y;
+        return newState;
+    }
 };
 
 
@@ -46,6 +91,7 @@ private:
     static const int RMT_CLK_DIV = 80;  // 80Mhz clock / 80 clk div => 1us
     static const int REQUEST_LENGTH = 9;
     static const int NUM_RESPONSE_BITS = 32;
+    static const int OVERSAMPLE_FACTOR = 8; // MINIMUM 2 (nyquist)
     static constexpr uint8_t reqBits[REQUEST_LENGTH] = {0,0,0,0,0,0,0,1,1};
 
     // Technically the same every time. Could be static
@@ -97,11 +143,11 @@ public:
         rx_cfg.rmt_mode = RMT_MODE_RX;
         rx_cfg.channel = rxChannel;
         rx_cfg.gpio_num = rxPin;
-        rx_cfg.clk_div = RMT_CLK_DIV/2;  // Recv 2x faster than we need to
+        rx_cfg.clk_div = RMT_CLK_DIV/OVERSAMPLE_FACTOR;
         rx_cfg.mem_block_num = 1;
         rx_cfg.rx_config.filter_en = false;
         // May not need these lines
-        rx_cfg.rx_config.filter_ticks_thresh = 2; // filter tiny spikes
+        rx_cfg.rx_config.filter_ticks_thresh = 0; // filter tiny spikes
         rx_cfg.rx_config.idle_threshold = 1000; // long idle to end
 
         rmt_config(&rx_cfg);
@@ -140,19 +186,21 @@ public:
         int numBitsDecoded = 0;
 
         for (int i=0; i<item_count && numBitsDecoded < REQUEST_LENGTH + NUM_RESPONSE_BITS ;i++){
-            /*
+
             // Skip the first few bits, we don't care about the request
             if (numBitsDecoded < REQUEST_LENGTH){
                 numBitsDecoded++;
                 continue;
             }
-            */
+
 
             // ensure the low level is 0 (controller drives low first)
             if (rx_items[i].level0 == 0) {
                 uint32_t low = rx_items[i].duration0;
                 uint32_t high = rx_items[i].duration1;
-                // threshold at 2 ticks (2us)
+                // If low is less than the average, then the bit is HIGH
+                // 0001 <- LOW
+                // 0111 <- HIGH
                 int bit = (low <= (low+high)/2) ? 1 : 0;
                 packedBits = (packedBits << 1) | (bit & 1);
                 numBitsDecoded++;
