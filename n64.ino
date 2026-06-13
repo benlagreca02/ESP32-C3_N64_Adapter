@@ -67,7 +67,7 @@ void loop() {
   if(dState.dr) toggleButton(BUTTON_9);
   if(dState.cu) toggleButton(BUTTON_10);
   if(dState.cd) toggleButton(BUTTON_11);
-  if(dState.cl) toggleButton(BUTTON_12);
+  if(dState.cl) toggleButton(BUTTON_14);
   if(dState.cr) toggleButton(BUTTON_13);
 
   // // Map analog stick to X/Y axes (range -128..127 → -32767..32767)
@@ -78,7 +78,5 @@ void loop() {
 
   // Send HID report
   bleGamepad.sendReport();
-  // Serial.printf("RAW: 0x%08x\t X: %d\t Y: %d\txRaw: %d\t yRaw: %d\t\n", data, xAxis, yAxis, state.x, state.y);
-  delay(1);
-  // delayMicroseconds(1000); // poll interval
+  delay(1); // poll interval
 }

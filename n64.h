@@ -64,7 +64,7 @@ public:
         N64State newState;
         newState.a = other.a != a;
         newState.b = other.b != b;
-        newState.z = other.b != b;
+        newState.z = other.z != z;
         newState.start = other.start != start;
         newState.l = other.l != l;
         newState.r = other.r != r;
