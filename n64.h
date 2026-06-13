@@ -193,7 +193,6 @@ public:
                 continue;
             }
 
-
             // ensure the low level is 0 (controller drives low first)
             if (rx_items[i].level0 == 0) {
                 uint32_t low = rx_items[i].duration0;

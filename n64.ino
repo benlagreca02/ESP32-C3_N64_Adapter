@@ -20,10 +20,13 @@ void toggleButton(uint8_t b){
   }
 }
 
-const rmt_channel_t TX_CH = RMT_CHANNEL_0;
-const rmt_channel_t RX_CH = RMT_CHANNEL_2;
-const gpio_num_t TX_PIN = GPIO_NUM_10;
-const gpio_num_t RX_PIN = GPIO_NUM_9;
+constexpr uint8_t BATT_PIN = A0;
+
+constexpr rmt_channel_t TX_CH = RMT_CHANNEL_0;
+constexpr rmt_channel_t RX_CH = RMT_CHANNEL_2;
+constexpr gpio_num_t TX_PIN = GPIO_NUM_10;
+constexpr gpio_num_t RX_PIN = GPIO_NUM_9;
+
 
 N64Controller n64(TX_PIN, RX_PIN, TX_CH, RX_CH);
 
@@ -38,17 +41,47 @@ void setup() {
     bleGamepadConfig.setAxesMax(32767);
     bleGamepadConfig.setControllerType(CONTROLLER_TYPE_GAMEPAD);
     bleGamepad.begin(&bleGamepadConfig);
+    pinMode(BATT_PIN, INPUT);
 }
 
+int readBatteryPercent(){
+    constexpr uint8_t NUM_BATT_SAMPLES = 1;
+    constexpr float BATTERY_MIN = 3.25;
+    constexpr float BATTERY_MAX = 3.9;
+    
+    // get battery voltage average
+    uint32_t batRaw = 0;
+    for(int i = 0; i < NUM_BATT_SAMPLES; i++){
+        batRaw += analogReadMilliVolts(BATT_PIN);
+    }
+    
+    batRaw /= NUM_BATT_SAMPLES;
+
+    // * 2 to comppensate for V divider
+    // * 1000 for mV -> V conversion
+    float batV = (batRaw * 2.0) / 1000.0;
+
+    // Get % between min and max
+    int percent = ((batV - BATTERY_MIN) / (BATTERY_MAX - BATTERY_MIN)) * 100;
+
+    return percent;
+}
 
 void loop() {
+  
+
+  // we don't need to do t his EVERY iteration... maybe smart to only do once in a while
+  int batteryPercent = readBatteryPercent();
+  // int batteryPercent = 69;
+  // Serial.printf("%3d\n", batteryPercent);
+
+
   if (!bleGamepad.isConnected()) {
     Serial.printf("No connection!\n");
     delay(500);
     return;
   }
   
-
   uint32_t data = n64.poll();
 
   state = N64State(data);
@@ -75,8 +108,10 @@ void loop() {
   int16_t yAxis = -(int16_t)state.y * 385.0;
 
   bleGamepad.setLeftThumb(xAxis, yAxis);
+  bleGamepad.setBatteryLevel(batteryPercent);
 
   // Send HID report
   bleGamepad.sendReport();
-  delay(1); // poll interval
+
+  delay(5); // poll interval
 }
